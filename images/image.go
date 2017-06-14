@@ -3,12 +3,13 @@ package images
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"io/ioutil"
 
 	"github.com/containerd/containerd/content"
+	"github.com/containerd/containerd/rootfs"
 	digest "github.com/opencontainers/go-digest"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
+	"github.com/pkg/errors"
 )
 
 // Image provides the model for how containerd views container images.
@@ -83,6 +84,39 @@ func (image *Image) Size(ctx context.Context, provider content.Provider) (int64,
 		}
 
 	}), image.Target)
+}
+
+func (image *Image) GetLayers(ctx context.Context, provider content.Provider) ([]rootfs.Layer, error) {
+	p, err := content.ReadBlob(ctx, provider, image.Target.Digest)
+	if err != nil {
+		return nil, errors.Wrapf(err, "failed to read manifest blob")
+	}
+
+	var manifest ocispec.Manifest
+	if err := json.Unmarshal(p, &manifest); err != nil {
+		return nil, errors.Wrap(err, "failed to unmarshal manifest")
+	}
+
+	diffIDs, err := image.RootFS(ctx, provider)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to resolve rootfs")
+	}
+
+	if len(diffIDs) != len(manifest.Layers) {
+		return nil, errors.Errorf("mismatched image rootfs and manifest layers")
+	}
+
+	layers := make([]rootfs.Layer, len(diffIDs))
+	for i := range diffIDs {
+		layers[i].Diff = ocispec.Descriptor{
+			// TODO: derive media type from compressed type
+			MediaType: ocispec.MediaTypeImageLayer,
+			Digest:    diffIDs[i],
+		}
+		layers[i].Blob = manifest.Layers[i]
+	}
+
+	return layers, nil
 }
 
 func Config(ctx context.Context, provider content.Provider, image ocispec.Descriptor) (ocispec.Descriptor, error) {
