@@ -3,10 +3,19 @@ package images
 import (
 	"reflect"
 	"testing"
+
+	digest "github.com/opencontainers/go-digest"
 )
 
 const (
 	testImage = "docker.io/library/alpine:latest"
+)
+
+var (
+	expDiffIDs = []digest.Digest{
+		"sha256:c6f988f4874bb0add23a778f753c65efe992244e148a1d2ec2a8b664fb66bbd1",
+		"sha256:5f70bf18a086007016e948b04aed3b82103a36bea41755b6cddfaf10ace3c6ef",
+	}
 )
 
 func TestImageMemberConfig(t *testing.T) {
@@ -56,6 +65,29 @@ func TestImageMemberSize(t *testing.T) {
 	}
 	if size != expected {
 		t.Fatalf("image size[%d] not equal to the expected[%d]!", size, expected)
+	}
+}
+
+func TestImageMemberGetLayers(t *testing.T) {
+	ctx, _, cs, manifest, _, layers, cleanup := setupImageStore(t)
+	defer cleanup()
+
+	image := Image{Name: testImage, Target: manifest}
+	rootfsLayers, err := image.GetLayers(ctx, cs)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(rootfsLayers) != len(layers) {
+		t.Fatalf("layer length [%d] not equal to the expected[%d]!", len(rootfsLayers), len(layers))
+	}
+	for i, rootfsLayer := range rootfsLayers {
+		if rootfsLayer.Diff.Digest != expDiffIDs[i] {
+			t.Fatalf("layer diffid[%v] not equal to the expected[%v]!", rootfsLayer.Diff.Digest, expDiffIDs[i])
+		}
+		if rootfsLayer.Blob.Digest != layers[i].Digest {
+			t.Fatalf("layer blob digest[%v] not equal to the expected[%v]!", rootfsLayer.Blob.Digest, layers[i].Digest)
+		}
 	}
 }
 
