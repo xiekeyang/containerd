@@ -3,6 +3,7 @@ package namespaces
 import (
 	"regexp"
 
+	"github.com/containerd/containerd/reference"
 	"github.com/pkg/errors"
 )
 
@@ -25,7 +26,7 @@ var (
 	// namespaces.
 	namespaceRe = regexp.MustCompile(reAnchor(label + reGroup("[.]"+reGroup(label)) + "*"))
 
-	errNamespaceInvalid = errors.Errorf("invalid namespace, must match %v", namespaceRe)
+	errNamespaceInvalid = errors.Errorf("invalid namespace, must match %v", reference.ReNamespace)
 )
 
 // IsNamespacesValid return true if the error was due to an invalid namespace
@@ -45,7 +46,7 @@ func IsNamespaceInvalid(err error) bool {
 // Typically, this function is used through NamespacesRequired, rather than
 // directly.
 func Validate(s string) error {
-	if !namespaceRe.MatchString(s) {
+	if !reference.ReNamespace.MatchString(s) {
 		return errors.Wrapf(errNamespaceInvalid, "namespace %q", s)
 	}
 	return nil

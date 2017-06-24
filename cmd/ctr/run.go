@@ -7,6 +7,7 @@ import (
 	"github.com/Sirupsen/logrus"
 	"github.com/containerd/console"
 	"github.com/containerd/containerd"
+	"github.com/containerd/containerd/reference"
 	digest "github.com/opencontainers/go-digest"
 	specs "github.com/opencontainers/runtime-spec/specs-go"
 	"github.com/pkg/errors"
@@ -94,8 +95,8 @@ var runCommand = cli.Command{
 		)
 		defer cancel()
 
-		if id == "" {
-			return errors.New("container id must be provided")
+		if reference.ReContainerId.MatchString(id) {
+			return errors.New("invalid namespace, must match %v", reference.ReContainerId)
 		}
 		if raw := context.String("checkpoint"); raw != "" {
 			if checkpointIndex, err = digest.Parse(raw); err != nil {
