@@ -113,36 +113,52 @@ func TestContentWriter(t *testing.T) {
 
 }
 
-func TestWalkBlobs(t *testing.T) {
-	ctx, _, cs, cleanup := contentStoreEnv(t)
-	defer cleanup()
-
+func BenchmarkWalkBlobs(b *testing.B) {
 	const (
-		nblobs  = 4 << 10
 		maxsize = 4 << 10
 	)
 
-	var (
-		blobs    = populateBlobStore(t, ctx, cs, nblobs, maxsize)
-		expected = map[digest.Digest]struct{}{}
-		found    = map[digest.Digest]struct{}{}
-	)
+	b.Run("BenchmarkWalkBlobs", func(b *testing.B) {
+		var (
+			expected = map[digest.Digest]struct{}{}
+			found    = map[digest.Digest]struct{}{}
+		)
 
-	for dgst := range blobs {
-		expected[dgst] = struct{}{}
-	}
+		b.StopTimer()
 
-	if err := cs.Walk(ctx, func(bi Info) error {
-		found[bi.Digest] = struct{}{}
-		checkBlobPath(t, cs, bi.Digest)
-		return nil
-	}); err != nil {
-		t.Fatal(err)
-	}
+		ctx, _, cs, cleanup := contentStoreEnv(b)
+		defer cleanup()
 
-	if !reflect.DeepEqual(expected, found) {
-		t.Fatalf("expected did not match found: %v != %v", found, expected)
-	}
+		blobs := generateBlobs(b, int64(b.N), maxsize)
+
+		var bytes int64
+		for _, blob := range blobs {
+			bytes += int64(len(blob))
+		}
+		b.SetBytes(bytes)
+
+		b.StartTimer()
+
+		for dgst, p := range blobs {
+			checkWrite(b, ctx, cs, dgst, p)
+		}
+
+		for dgst := range blobs {
+			expected[dgst] = struct{}{}
+		}
+
+		if err := cs.Walk(ctx, func(bi Info) error {
+			found[bi.Digest] = struct{}{}
+			checkBlobPath(b, cs, bi.Digest)
+			return nil
+		}); err != nil {
+			b.Fatal(err)
+		}
+
+		if !reflect.DeepEqual(expected, found) {
+			b.Fatalf("expected did not match found: %v != %v", found, expected)
+		}
+	})
 }
 
 // BenchmarkIngests checks the insertion time over varying blob sizes.
@@ -182,6 +198,7 @@ func BenchmarkIngests(b *testing.B) {
 
 type checker interface {
 	Fatal(args ...interface{})
+	Fatalf(format string, args ...interface{})
 }
 
 func generateBlobs(t checker, nblobs, maxsize int64) map[digest.Digest][]byte {
@@ -247,7 +264,7 @@ func checkCopy(t checker, size int64, dst io.Writer, src io.Reader) {
 	}
 }
 
-func checkBlobPath(t *testing.T, cs Store, dgst digest.Digest) string {
+func checkBlobPath(t checker, cs Store, dgst digest.Digest) string {
 	path := cs.(*store).blobPath(dgst)
 
 	if path != filepath.Join(cs.(*store).root, "blobs", dgst.Algorithm().String(), dgst.Hex()) {
