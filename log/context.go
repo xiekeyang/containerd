@@ -2,7 +2,9 @@ package log
 
 import (
 	"context"
+	"os"
 	"path"
+	"reflect"
 
 	"github.com/Sirupsen/logrus"
 )
@@ -19,8 +21,9 @@ var (
 )
 
 type (
-	loggerKey struct{}
-	moduleKey struct{}
+	loggerKey  struct{}
+	moduleKey  struct{}
+	stderrHook struct{}
 )
 
 // WithLogger returns a new context with the provided logger. Use in
@@ -78,4 +81,25 @@ func GetModulePath(ctx context.Context) string {
 	}
 
 	return module.(string)
+}
+
+func (h *stderrHook) Levels() []logrus.Level {
+	return []logrus.Level{
+		logrus.PanicLevel,
+		logrus.FatalLevel,
+		logrus.ErrorLevel,
+		logrus.WarnLevel,
+	}
+}
+
+func (h *stderrHook) Fire(entry *logrus.Entry) error {
+	thisLog := reflect.ValueOf(*entry.Logger).Interface().(logrus.Logger)
+	entry.Logger = &thisLog
+	entry.Logger.Out = os.Stderr
+	return nil
+}
+
+func init() {
+	L.Logger.Out = os.Stdout
+	L.Logger.Hooks.Add(&stderrHook{})
 }
