@@ -3,8 +3,11 @@ package server
 import (
 	"bytes"
 	"io"
+	"os"
 
 	"github.com/BurntSushi/toml"
+	"github.com/containerd/containerd/log"
+	"golang.org/x/net/context"
 )
 
 // Config provides containerd configuration data for the server
@@ -23,6 +26,8 @@ type Config struct {
 	Subreaper bool `toml:"subreaper"`
 	// OOMScore adjust the containerd's oom score
 	OOMScore int `toml:"oom_score"`
+	// LogHooks provides log hook settings
+	LogHooks map[string]toml.Primitive `toml:"loghooks"`
 
 	md toml.MetaData
 }
@@ -78,4 +83,28 @@ func LoadConfig(path string, v *Config) error {
 	v.md = md
 	return nil
 
+}
+
+func LoadLogHooksConfig(ctx context.Context, v *Config) error {
+	data, ok := v.LogHooks["sendmail"]
+	if ok {
+		var h log.MailHook
+		err := v.md.PrimitiveDecode(data, &h)
+		if err != nil {
+			return err
+		}
+		log.G(ctx).Logger.Hooks.Add(&h)
+	}
+
+	data, ok = v.LogHooks["splitstderr"]
+	if ok {
+		var h log.StderrHook
+		err := v.md.PrimitiveDecode(data, &h)
+		if err != nil {
+			return err
+		}
+		log.G(ctx).Logger.Out = os.Stdout
+		log.G(ctx).Logger.Hooks.Add(&h)
+	}
+	return nil
 }
